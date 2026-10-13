@@ -48,3 +48,25 @@ python Agent-using-langchain.py
   "openai" from the `openai/` prefix in the model string, which is wrong here).
 - Calculator tool reused from `agent-from-scratch/tools.py`'s design (raw
   string expression in, parsed on the Python side).
+
+## Running on a local model (Ollama)
+
+Set `MODEL_PROVIDER=ollama` in `.env` (default is `groq`) and make sure Ollama
+is running with `llama3.2:1b` pulled (`pip install langchain-ollama`).
+
+### Findings: same graph, two models
+
+| Query | Groq `gpt-oss-120b` | Ollama `llama3.2:1b` (Q8_0) |
+|---|---|---|
+| Multiply 256 and 756 | Valid tool call, correct (193,536) | Valid tool call, correct, noticeably slower |
+| 15 times 12, plus 100 | not run | Malformed tool call, answered in plain text (280, correct by luck, no tool used) |
+| 847 times 293, plus 1000 | not run | Malformed tool call, answered wrong (249,611 vs correct 249,171), no tool used |
+
+What this showed:
+- The 1B model can handle a simple tool call but fails at producing valid
+  structured arguments on harder queries: it copies the tool's schema into the
+  arguments instead of filling in values.
+- When the tool path fails, the model falls back to doing the math itself,
+  confidently and wrongly. This is the reason the calculator tool exists.
+- Returning the tool error to the model did not make it retry correctly.
+- Model size is the main variable for tool-calling reliability here, not quantization.
