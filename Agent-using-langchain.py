@@ -1,15 +1,18 @@
+import os
+
 from dotenv import load_dotenv
-from langchain.chat_models import init_chat_model
 from langchain.tools import tool
 
 load_dotenv()
-model = init_chat_model(
-    "openai/gpt-oss-120b",
-    model_provider="groq",
-    temperature=0
-)
+provider = os.getenv("MODEL_PROVIDER","groq")
 
-
+if provider == "ollama":
+    from langchain_ollama import ChatOllama
+    model = ChatOllama(model="llama3.2:1b", temperature=0)
+else:
+    from langchain.chat_models import init_chat_model
+    model = init_chat_model("openai/gpt-oss-120b", model_provider="groq", temperature=0)
+print(f"provider: {provider}")
 # Define tools
 @tool
 def multiply(a: int, b: int) -> int:
@@ -72,7 +75,7 @@ def llm_calls(state: MessagesState):
             model_with_tools.invoke(
                 [
                     SystemMessage(
-                        content="You are a helpful assistant tasked with performing arithmetic on a det of inputs."
+                        content="You are a helpful assistant tasked with performing arithmetic on a set of inputs."
                     )
                 ]
                 + state["messages"]
@@ -89,12 +92,14 @@ from langchain.messages import ToolMessage
 
 def tool_node(state: MessagesState):
     """Performs the tool call"""
-
     result = []
     for tool_call in state["messages"][-1].tool_calls:
         tool = tools_by_name[tool_call["name"]]
-        observation = tool.invoke(tool_call["args"])
-        result.append(ToolMessage(content=observation, tool_call_id=tool_call["id"]))
+        try:
+            observation = tool.invoke(tool_call["args"])
+        except Exception as e:
+            observation = f"Error calling {tool_call['name']}: {e}. Check the arguments and try again."
+        result.append(ToolMessage(content=str(observation), tool_call_id=tool_call["id"]))
     return {"messages": result}
 
 # Step 5: Define logic to determine whether to end
@@ -148,7 +153,7 @@ display(Image(agent.get_graph(xray=True).draw_mermaid_png()))
 # Invoke
 from langchain.messages import HumanMessage
 
-messages = [HumanMessage(content="Divide 3 and 0.")]
+messages = [HumanMessage(content="What is 847 times 293, plus 1000?")]
 messages = agent.invoke({"messages": messages})
 for m in messages["messages"]:
     m.pretty_print()
